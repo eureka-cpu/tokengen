@@ -1,0 +1,15 @@
+[workspace.metadata.crane]
+name = "tokengen"
+
+[workspace.package]
+description = "A token generation library for defining symbols, keywords and other tokens for lexers and parsers."
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.dependencies]
+expect-test = "1.5.1"
