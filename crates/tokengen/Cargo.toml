@@ -5,6 +5,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+derive = []
+
 [dependencies]
 tokengen-derive = { path = "../tokengen-derive" }
 
