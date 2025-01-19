@@ -7,13 +7,13 @@ Be warned that this crate is purely for my own research and implementation purpo
 
 Import the crate as a git dependency in your `Cargo.toml`. If you wish to use the derive features, enable them like so:
 
-```
+```toml
 [dependencies]
 tokengen = { git = "...", features = ["derive"] }
 ```
 
 Generate single or multiples of keywords, symbols and more using the generative or derive macros:
-```
+```rust
 keyword!([If, "if"]);
 
 symbol!(
@@ -26,7 +26,7 @@ symbol!(
 
 > Using derive macros require the `derive` feature.
 
-```
+```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Token)]
 pub struct Ident {
     span: SourceSpan,
