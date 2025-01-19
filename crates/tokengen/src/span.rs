@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, sync::Arc};
 
 pub trait Span {
     fn src(&self) -> &str;
@@ -11,30 +11,23 @@ pub trait Span {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Clone, PartialEq, Eq, Ord, PartialOrd)]
 pub struct SourceSpan {
-    src_ptr: *const u8,
-    src_len: usize,
+    // TODO: Add an id for the file it came from
+    src: Arc<str>,
     start: usize,
     end: usize,
 }
 
 impl SourceSpan {
-    pub fn new<T: AsRef<str>>(src: T, start: usize, end: usize) -> Self {
-        let s = src.as_ref();
-        Self {
-            src_ptr: s.as_ptr(),
-            src_len: s.len(),
-            start,
-            end,
-        }
+    pub fn new(src: Arc<str>, start: usize, end: usize) -> Self {
+        Self { src, start, end }
     }
 }
 
 impl Span for SourceSpan {
     fn src(&self) -> &str {
-        let slice: &[u8] = unsafe { std::slice::from_raw_parts(self.src_ptr, self.src_len) };
-        std::str::from_utf8(slice).expect("source span failed to convert slice to &str")
+        self.src.as_ref()
     }
     fn start(&self) -> usize {
         self.start

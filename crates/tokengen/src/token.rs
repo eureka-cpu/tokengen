@@ -1,9 +1,9 @@
-use std::{collections::VecDeque, fmt::Debug};
+use std::{collections::VecDeque, fmt::Debug, sync::Arc};
 
 use crate::span::{SourceSpan, Span};
 use tokengen_derive::Token;
 
-pub trait Token: Copy + Clone + Debug + Sized {}
+pub trait Token: Clone + Debug + Sized {}
 
 // TODO: Maybe make this a recursive data structure?
 #[derive(Debug)]
@@ -39,7 +39,7 @@ macro_rules! symbol {
             #[allow(dead_code)] // Ignore warnings if alias is never used
             $($(pub type $alias = $name;)*)*
 
-            #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Token $(,$($trait,)*)*)]
+            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Token $(,$($trait,)*)*)]
             pub struct $name {
                 span: $crate::span::SourceSpan,
             }
@@ -47,7 +47,7 @@ macro_rules! symbol {
                 pub const STATIC_REF: &'static char = &$char;
 
                 #[allow(dead_code)] // Ignore warnings if constructor is never used
-                pub fn new(src: &str, start: usize, end: usize) -> Self {
+                pub fn new(src: std::sync::Arc<str>, start: usize, end: usize) -> Self {
                     Self { span: $crate::span::SourceSpan::new(src, start, end) }
                 }
             }
@@ -80,7 +80,7 @@ macro_rules! symbol {
             }
         )+
         #[allow(dead_code)]
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
         pub enum Symbol {
             $($name($name),)+
         }
@@ -106,13 +106,13 @@ macro_rules! symbol {
 macro_rules! keyword {
     ( $([$name:ident, $str:literal]),+ ) => {
         $(
-            #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Token)]
+            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Token)]
             pub struct $name {
                 span: $crate::span::SourceSpan,
             }
             impl $name {
                 pub const STATIC_REF: &'static str = $str;
-                pub fn new(src: &str, start: usize, end: usize) -> Self {
+                pub fn new(src: std::sync::Arc<str>, start: usize, end: usize) -> Self {
                     Self { span: $crate::span::SourceSpan::new(src, start, end) }
                 }
             }
@@ -145,7 +145,7 @@ macro_rules! keyword {
             }
         )+
         #[allow(dead_code)]
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
         pub enum Keyword {
             $($name($name),)+
         }
@@ -167,12 +167,12 @@ macro_rules! keyword {
 }
 
 /// An identifier is the name used to uniquely identify variables, functions, classes, modules, or other user-defined entities
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Token)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Token)]
 pub struct Ident {
     span: SourceSpan,
 }
 impl Ident {
-    pub fn new(src: &str, start: usize, end: usize) -> Self {
+    pub fn new(src: Arc<str>, start: usize, end: usize) -> Self {
         Self {
             span: SourceSpan::new(src, start, end),
         }
@@ -198,12 +198,12 @@ impl Span for Ident {
 
 // TODO: Delimited items probably don't belong here, maybe just in the AST.
 /// Denotes that a [`Symbol`] or [`CookedSymbol`] is also classified as a potential [`Delimiter`].
-pub trait Delimiter: Copy + Clone + Debug + Span {}
+pub trait Delimiter: Clone + Debug + Span {}
 /// A [`Token`] delimited by some [`Symbol`] or [`CookedSymbol`].
 //
 /// Delimiters are `Option` since we should try to recover if parsing fails.
 /// [`DelimitedToken`]s are also considered [`Token`]s since they could potentially be nested.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Token)]
+#[derive(Debug, Clone, PartialEq, Eq, Token)]
 pub struct DelimitedToken<O, T, C>
 where
     O: Delimiter,
@@ -223,14 +223,14 @@ where
     pub fn new(open: Option<O>, token: Option<T>, close: Option<C>) -> Self {
         Self { open, token, close }
     }
-    pub fn open(&self) -> Option<O> {
-        self.open
+    pub fn open(&self) -> Option<&O> {
+        self.open.as_ref()
     }
-    pub fn token(&self) -> Option<T> {
-        self.token
+    pub fn token(&self) -> Option<&T> {
+        self.token.as_ref()
     }
-    pub fn close(&self) -> Option<C> {
-        self.close
+    pub fn close(&self) -> Option<&C> {
+        self.close.as_ref()
     }
 }
 impl<O, T, C> Span for DelimitedToken<O, T, C>
@@ -260,6 +260,8 @@ where
 mod token_tests {
     //! Tests for asserting that the macros expand as expected.
 
+    use std::sync::Arc;
+
     use super::{DelimitedToken, Delimiter, Token};
     use crate::span::Span;
     use expect_test::{expect, Expect};
@@ -285,7 +287,7 @@ mod token_tests {
     fn test_symbol() {
         let symbol_str = PoundSign::STATIC_REF.to_string();
         let src = r#"# Hello, World!"#;
-        let hash = Hash::new(src, 0, symbol_str.len());
+        let hash = Hash::new(Arc::from(src), 0, symbol_str.len());
 
         assert_eq!(symbol_str.len(), hash.len());
         assert_eq!(symbol_str, format!("{hash}"));
@@ -306,7 +308,7 @@ mod token_tests {
     fn test_keyword() {
         let keyword_str = If::STATIC_REF;
         let src = r#"if [ ! -e "$1" ]; then"#;
-        let if_keyword = If::new(src, 0, keyword_str.len());
+        let if_keyword = If::new(Arc::from(src), 0, keyword_str.len());
 
         assert_eq!(keyword_str.len(), if_keyword.len());
         assert_eq!(keyword_str, format!("{if_keyword}"));
@@ -329,8 +331,9 @@ mod token_tests {
         let open_str = OpenParenthesis::STATIC_REF.to_string();
         let close_str = ClosedParenthesis::STATIC_REF.to_string();
         let src = r#"()"#;
-        let open = OpenParenthesis::new(src, 0, open_str.len());
-        let close = ClosedParenthesis::new(src, open.end(), open.end() + close_str.len());
+        let open = OpenParenthesis::new(Arc::from(src), 0, open_str.len());
+        let close =
+            ClosedParenthesis::new(Arc::from(src), open.end(), open.end() + close_str.len());
         let delimited_token = DelimitedToken::new(Some(open), None::<DummyToken>, Some(close));
 
         assert_eq!(open_str.len(), delimited_token.open().unwrap().len());
