@@ -3,20 +3,19 @@ use std::{collections::VecDeque, fmt::Debug, sync::Arc};
 use crate::span::{SourceSpan, Span};
 use tokengen_derive::Token;
 
-pub trait Token: Clone + Debug + Sized {}
+pub trait Token: Debug {}
 
-// TODO: Maybe make this a recursive data structure?
 #[derive(Debug)]
-pub struct TokenStream<T: Token>(pub VecDeque<T>);
-impl<T: Token> TokenStream<T> {
+pub struct TokenStream(pub VecDeque<Box<dyn Token>>);
+impl TokenStream {
     /// Create a new token stream from the length of the source to avoid reallocations
     pub fn new(capacity: usize) -> Self {
         Self(VecDeque::with_capacity(capacity))
     }
-    pub fn push_back(&mut self, token: T) {
+    pub fn push_back(&mut self, token: Box<dyn Token>) {
         self.0.push_back(token)
     }
-    pub fn pop_front(&mut self) -> Option<T> {
+    pub fn pop_front(&mut self) -> Option<Box<dyn Token>> {
         self.0.pop_front()
     }
     pub fn len(&self) -> usize {
