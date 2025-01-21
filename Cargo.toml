@@ -2,6 +2,7 @@
 name = "tokengen"
 
 [workspace.package]
+name = "tokengen"
 description = "A token generation library for defining symbols, keywords and other tokens for lexers and parsers."
 version = "0.1.0"
 edition = "2021"

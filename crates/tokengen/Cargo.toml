@@ -10,6 +10,7 @@ default = []
 derive = []
 
 [dependencies]
+thiserror = "2.0.11"
 tokengen-derive = { path = "../tokengen-derive" }
 
 [dev-dependencies]

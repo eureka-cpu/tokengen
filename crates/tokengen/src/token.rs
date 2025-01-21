@@ -26,11 +26,33 @@ impl TokenStream {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("'{0}' is not part of the set of defined symbols")]
+    MissingSymbol(char),
+
+    #[error("'{0}' is not part of the set of defined keywords")]
+    MissingKeyword(String),
+}
+
+// TODO: See if there is a way to accept doc comments as part of the macro rule
+// this way users can document their types they've created with the macro
 /// Basic single character symbols that can later be used in crafting tokens,
 /// or in match arms when lexing. This macro allows for common aliases to
 /// be passed as a list for convenience, but is subject to change.
 /// Additional derive traits can optionally be added at the end to extend
 /// functionality without the need of explicit impl blocks.
+///
+/// Usage:
+/// ```rust,ignore
+/// // [StructIdentifier, 'char', [Alias1, Alias2], { DeriveTrait1, DeriveTrait2 }]
+/// symbol!(
+///     [ExclamationMark, '!', [Bang]],
+///     [PoundSign, '#', [Hash]],
+///     [OpenParenthesis, '(', { Delimiter }],
+///     [ClosedParenthesis, ')', { Delimiter }]
+/// );
+/// ```
 #[macro_export]
 macro_rules! symbol {
     ( $([$name:ident, $char:literal $(,[$($alias:ident),*]),* $(,{$($trait:ident),*})* ]),+ ) => {
@@ -43,7 +65,7 @@ macro_rules! symbol {
                 span: $crate::span::SourceSpan,
             }
             impl $name {
-                pub const STATIC_REF: &'static char = &$char;
+                pub const AS_LITERAL: &'static char = &$char;
 
                 #[allow(dead_code)] // Ignore warnings if constructor is never used
                 pub fn new(src: std::sync::Arc<str>, start: usize, end: usize) -> Self {
@@ -81,19 +103,28 @@ macro_rules! symbol {
         #[allow(dead_code)]
         #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
         pub enum Symbol {
-            $($name($name),)+
+            $($name,)+
         }
         impl AsRef<char> for Symbol {
             fn as_ref(&self) -> &char {
                 match self {
-                    $(Self::$name(_) => $name::STATIC_REF,)+
+                    $(Self::$name => $name::AS_LITERAL,)+
+                }
+            }
+        }
+        impl TryFrom<char> for Symbol {
+            type Error = crate::token::Error;
+            fn try_from(value: char) -> Result<Self, Self::Error> {
+                match &value {
+                    $($name::AS_LITERAL => Ok(Self::$name),)+
+                    _ => Err(crate::token::Error::MissingSymbol(value))
                 }
             }
         }
         impl std::fmt::Display for Symbol {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
-                    $(Self::$name(_) => write!(f, "{}", self.as_ref()),)+
+                    $(Self::$name => write!(f, "{}", self.as_ref()),)+
                 }
             }
         }
@@ -101,6 +132,12 @@ macro_rules! symbol {
 }
 
 /// A keyword is some string that is reserved for a language
+///
+/// Usage:
+/// ```rust,ignore
+/// [StructIdentifier, "&str"]
+/// keyword!([If, "if"]);
+/// ```
 #[macro_export]
 macro_rules! keyword {
     ( $([$name:ident, $str:literal]),+ ) => {
@@ -110,7 +147,8 @@ macro_rules! keyword {
                 span: $crate::span::SourceSpan,
             }
             impl $name {
-                pub const STATIC_REF: &'static str = $str;
+                // TODO: Change this so that the name of the const is the name of the symbol or just a better name
+                pub const AS_LITERAL: &'static str = $str;
                 pub fn new(src: std::sync::Arc<str>, start: usize, end: usize) -> Self {
                     Self { span: $crate::span::SourceSpan::new(src, start, end) }
                 }
@@ -146,19 +184,19 @@ macro_rules! keyword {
         #[allow(dead_code)]
         #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
         pub enum Keyword {
-            $($name($name),)+
+            $($name,)+
         }
         impl AsRef<str> for Keyword {
             fn as_ref(&self) -> &str {
                 match self {
-                    $(Self::$name(_) => $name::STATIC_REF,)+
+                    $(Self::$name => $name::AS_LITERAL,)+
                 }
             }
         }
         impl std::fmt::Display for Keyword {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
-                    $(Self::$name(_) => write!(f, "{}", self.as_ref()),)+
+                    $(Self::$name => write!(f, "{}", self.as_ref()),)+
                 }
             }
         }
@@ -284,7 +322,7 @@ mod token_tests {
 
     #[test]
     fn test_symbol() {
-        let symbol_str = PoundSign::STATIC_REF.to_string();
+        let symbol_str = PoundSign::AS_LITERAL.to_string();
         let src = r#"# Hello, World!"#;
         let hash = Hash::new(Arc::from(src), 0, symbol_str.len());
 
@@ -305,7 +343,7 @@ mod token_tests {
 
     #[test]
     fn test_keyword() {
-        let keyword_str = If::STATIC_REF;
+        let keyword_str = If::AS_LITERAL;
         let src = r#"if [ ! -e "$1" ]; then"#;
         let if_keyword = If::new(Arc::from(src), 0, keyword_str.len());
 
@@ -327,8 +365,8 @@ mod token_tests {
 
     #[test]
     fn test_delimiter() {
-        let open_str = OpenParenthesis::STATIC_REF.to_string();
-        let close_str = ClosedParenthesis::STATIC_REF.to_string();
+        let open_str = OpenParenthesis::AS_LITERAL.to_string();
+        let close_str = ClosedParenthesis::AS_LITERAL.to_string();
         let src = r#"()"#;
         let open = OpenParenthesis::new(Arc::from(src), 0, open_str.len());
         let close =
