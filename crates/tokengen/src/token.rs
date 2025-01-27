@@ -113,11 +113,11 @@ macro_rules! symbol {
             }
         }
         impl TryFrom<char> for Symbol {
-            type Error = crate::token::Error;
+            type Error = $crate::token::Error;
             fn try_from(value: char) -> Result<Self, Self::Error> {
                 match &value {
                     $($name::AS_LITERAL => Ok(Self::$name),)+
-                    _ => Err(crate::token::Error::MissingSymbol(value))
+                    _ => Err($crate::token::Error::MissingSymbol(value))
                 }
             }
         }
