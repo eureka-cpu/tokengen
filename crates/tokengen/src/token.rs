@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, fmt::Debug, sync::Arc};
 
 use crate::span::{SourceSpan, Span};
-use tokengen_derive::Token;
+use tokengen_derive::Token as DeriveToken;
 
 pub trait Token: Debug {}
 
@@ -60,7 +60,7 @@ macro_rules! symbol {
             #[allow(dead_code)] // Ignore warnings if alias is never used
             $($(pub type $alias = $name;)*)*
 
-            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::Token $(,$($trait,)*)*)]
+            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveToken $(,$($trait,)*)*)]
             pub struct $name {
                 span: $crate::span::SourceSpan,
             }
@@ -136,7 +136,7 @@ macro_rules! symbol {
 macro_rules! joined_symbol {
     ( $([$name:ident, [$($symbol:ident),+] $(,{$($trait:ident),*})* ]),+ ) => {
         $(
-            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::Token)]
+            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveToken)]
             pub struct $name {
                 span: $crate::span::SourceSpan,
             }
@@ -191,7 +191,7 @@ macro_rules! joined_symbol {
 macro_rules! keyword {
     ( $([$name:ident, $str:literal]),+ ) => {
         $(
-            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Token)]
+            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveToken)]
             pub struct $name {
                 span: $crate::span::SourceSpan,
             }
@@ -253,7 +253,7 @@ macro_rules! keyword {
 }
 
 /// An identifier is the name used to uniquely identify variables, functions, classes, modules, or other user-defined entities
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Token)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, DeriveToken)]
 pub struct Ident {
     span: SourceSpan,
 }
@@ -289,7 +289,7 @@ pub trait Delimiter: Clone + Debug + Span {}
 //
 /// Delimiters are `Option` since we should try to recover if parsing fails.
 /// [`DelimitedToken`]s are also considered [`Token`]s since they could potentially be nested.
-#[derive(Debug, Clone, PartialEq, Eq, Token)]
+#[derive(Debug, Clone, PartialEq, Eq, DeriveToken)]
 pub struct DelimitedToken<O, T, C>
 where
     O: Delimiter,
