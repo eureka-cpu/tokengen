@@ -1,9 +1,9 @@
 use std::{collections::VecDeque, fmt::Debug, sync::Arc};
 
 use crate::span::{SourceSpan, Span};
-pub use tokengen_derive::Token as DeriveToken;
+pub use tokengen_derive::{Span as DeriveSpan, Token as DeriveToken};
 
-pub trait Token: Debug {}
+pub trait Token: Debug + Span {}
 
 #[derive(Debug)]
 pub struct TokenStream(pub VecDeque<Box<dyn Token>>);
@@ -60,7 +60,7 @@ macro_rules! symbols {
             #[allow(dead_code)] // Ignore warnings if alias is never used
             $($(pub type $alias = $name;)*)*
 
-            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveToken $(,$($trait,)*)*)]
+            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveSpan, $crate::token::DeriveToken $(,$($trait,)*)*)]
             pub struct $name {
                 span: $crate::span::SourceSpan,
             }
@@ -70,23 +70,6 @@ macro_rules! symbols {
                 #[allow(dead_code)] // Ignore warnings if constructor is never used
                 pub fn new(src: std::sync::Arc<str>, start: usize, end: usize) -> Self {
                     Self { span: $crate::span::SourceSpan::new(src, start, end) }
-                }
-            }
-            impl $crate::span::Span for $name {
-                fn src(&self) -> &str {
-                    self.span.src()
-                }
-                fn start(&self) -> usize {
-                    self.span.start()
-                }
-                fn end(&self) -> usize {
-                    self.span.end()
-                }
-                fn span(&self) -> &str {
-                    self.span.span()
-                }
-                fn len(&self) -> usize {
-                    self.span.len()
                 }
             }
             impl AsRef<char> for $name {
@@ -136,7 +119,7 @@ macro_rules! symbols {
 macro_rules! joined_symbols {
     ( $([$name:ident, [$($symbol:ident),+] $(,{$($trait:ident),*})* ]),+ ) => {
         $(
-            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveToken)]
+            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveSpan, $crate::token::DeriveToken)]
             pub struct $name {
                 span: $crate::span::SourceSpan,
             }
@@ -149,23 +132,6 @@ macro_rules! joined_symbols {
 
                 pub fn new(src: std::sync::Arc<str>, start: usize, end: usize) -> Self {
                     Self { span: $crate::span::SourceSpan::new(src, start, end) }
-                }
-            }
-            impl $crate::span::Span for $name {
-                fn src(&self) -> &str {
-                    self.span.src()
-                }
-                fn start(&self) -> usize {
-                    self.span.start()
-                }
-                fn end(&self) -> usize {
-                    self.span.end()
-                }
-                fn span(&self) -> &str {
-                    self.span.span()
-                }
-                fn len(&self) -> usize {
-                    self.span.len()
                 }
             }
             impl std::fmt::Display for $name {
@@ -191,7 +157,7 @@ macro_rules! joined_symbols {
 macro_rules! keywords {
     ( $([$name:ident, $str:literal]),+ ) => {
         $(
-            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveToken)]
+            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveSpan, $crate::token::DeriveToken)]
             pub struct $name {
                 span: $crate::span::SourceSpan,
             }
@@ -200,23 +166,6 @@ macro_rules! keywords {
                 pub const AS_LITERAL: &'static str = $str;
                 pub fn new(src: std::sync::Arc<str>, start: usize, end: usize) -> Self {
                     Self { span: $crate::span::SourceSpan::new(src, start, end) }
-                }
-            }
-            impl $crate::span::Span for $name {
-                fn src(&self) -> &str {
-                    self.span.src()
-                }
-                fn start(&self) -> usize {
-                    self.span.start()
-                }
-                fn end(&self) -> usize {
-                    self.span.end()
-                }
-                fn span(&self) -> &str {
-                    self.span.span()
-                }
-                fn len(&self) -> usize {
-                    self.span.len()
                 }
             }
             impl AsRef<str> for $name {
@@ -253,7 +202,7 @@ macro_rules! keywords {
 }
 
 /// An identifier is the name used to uniquely identify variables, functions, classes, modules, or other user-defined entities
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, DeriveToken)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, DeriveSpan, DeriveToken)]
 pub struct Ident {
     span: SourceSpan,
 }
@@ -264,26 +213,9 @@ impl Ident {
         }
     }
 }
-impl Span for Ident {
-    fn src(&self) -> &str {
-        self.span.src()
-    }
-    fn start(&self) -> usize {
-        self.span.start()
-    }
-    fn end(&self) -> usize {
-        self.span.end()
-    }
-    fn span(&self) -> &str {
-        self.span.span()
-    }
-    fn len(&self) -> usize {
-        self.span.len()
-    }
-}
 
 /// Denotes that a [`Symbol`] or [`JoinedSymbol`] is also classified as a potential [`Delimiter`].
-pub trait Delimiter: Clone + Debug + Span {}
+pub trait Delimiter: Clone + Debug + Span + Token {}
 /// A [`Token`] delimited by some [`Symbol`] or [`JoinedSymbol`].
 //
 /// Delimiters are `Option` since we should try to recover if parsing fails.
@@ -325,7 +257,13 @@ where
     C: Delimiter,
 {
     fn src(&self) -> &str {
-        todo!("src should come from the token")
+        self.open()
+            .map(|t| t.src())
+            .or(self
+                .token()
+                .map(|t| t.src())
+                .or(self.close().map(|t| t.src())))
+            .expect("found empty delimited token group")
     }
     fn start(&self) -> usize {
         self.open().unwrap().start()
@@ -355,6 +293,23 @@ mod token_tests {
     #[derive(Debug, Copy, Clone)]
     struct DummyToken;
     impl Token for DummyToken {}
+    impl Span for DummyToken {
+        fn src(&self) -> &str {
+            ""
+        }
+        fn start(&self) -> usize {
+            0
+        }
+        fn end(&self) -> usize {
+            0
+        }
+        fn span(&self) -> &str {
+            &self.src()[self.start()..self.end()]
+        }
+        fn len(&self) -> usize {
+            self.src().len()
+        }
+    }
 
     symbols!(
         [ExclamationMark, '!', [Bang]],
