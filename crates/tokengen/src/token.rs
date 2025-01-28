@@ -46,7 +46,7 @@ pub enum Error {
 /// Usage:
 /// ```rust,ignore
 /// // [StructIdentifier, 'char', [Alias1, Alias2], { DeriveTrait1, DeriveTrait2 }]
-/// symbol!(
+/// symbols!(
 ///     [ExclamationMark, '!', [Bang]],
 ///     [PoundSign, '#', [Hash]],
 ///     [OpenParenthesis, '(', { Delimiter }],
@@ -54,7 +54,7 @@ pub enum Error {
 /// );
 /// ```
 #[macro_export]
-macro_rules! symbol {
+macro_rules! symbols {
     ( $([$name:ident, $char:literal $(,[$($alias:ident),*]),* $(,{$($trait:ident),*})* ]),+ ) => {
         $(
             #[allow(dead_code)] // Ignore warnings if alias is never used
@@ -133,7 +133,7 @@ macro_rules! symbol {
 
 /// A joined symbol is two or more symbols that together form a specific identifier.
 #[macro_export]
-macro_rules! joined_symbol {
+macro_rules! joined_symbols {
     ( $([$name:ident, [$($symbol:ident),+] $(,{$($trait:ident),*})* ]),+ ) => {
         $(
             #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveToken)]
@@ -185,10 +185,10 @@ macro_rules! joined_symbol {
 /// Usage:
 /// ```rust,ignore
 /// [StructIdentifier, "&str"]
-/// keyword!([If, "if"]);
+/// keywords!([If, "if"]);
 /// ```
 #[macro_export]
-macro_rules! keyword {
+macro_rules! keywords {
     ( $([$name:ident, $str:literal]),+ ) => {
         $(
             #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveToken)]
@@ -282,7 +282,6 @@ impl Span for Ident {
     }
 }
 
-// TODO: Delimited items probably don't belong here, maybe just in the AST.
 /// Denotes that a [`Symbol`] or [`JoinedSymbol`] is also classified as a potential [`Delimiter`].
 pub trait Delimiter: Clone + Debug + Span {}
 /// A [`Token`] delimited by some [`Symbol`] or [`JoinedSymbol`].
@@ -357,14 +356,14 @@ mod token_tests {
     struct DummyToken;
     impl Token for DummyToken {}
 
-    symbol!(
+    symbols!(
         [ExclamationMark, '!', [Bang]],
         [PoundSign, '#', [Hash]],
         [OpenParenthesis, '(', { Delimiter }],
         [ClosedParenthesis, ')', { Delimiter }]
     );
-    joined_symbol!([HashBang, [PoundSign, ExclamationMark]]);
-    keyword!([If, "if"]);
+    joined_symbols!([HashBang, [PoundSign, ExclamationMark]]);
+    keywords!([If, "if"]);
 
     fn check_spans<S: Span + std::fmt::Debug>(output: S, expect: Expect) {
         expect.assert_eq(&format!("{output:#?}"));
