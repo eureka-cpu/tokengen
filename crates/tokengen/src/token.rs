@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, fmt::Debug, sync::Arc};
 
 use crate::span::{SourceSpan, Span};
-use tokengen_derive::Token as DeriveToken;
+pub use tokengen_derive::Token as DeriveToken;
 
 pub trait Token: Debug {}
 
