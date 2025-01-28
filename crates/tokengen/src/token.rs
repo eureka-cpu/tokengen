@@ -60,7 +60,7 @@ macro_rules! symbol {
             #[allow(dead_code)] // Ignore warnings if alias is never used
             $($(pub type $alias = $name;)*)*
 
-            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Token $(,$($trait,)*)*)]
+            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::Token $(,$($trait,)*)*)]
             pub struct $name {
                 span: $crate::span::SourceSpan,
             }
@@ -131,7 +131,56 @@ macro_rules! symbol {
     };
 }
 
-/// A keyword is some string that is reserved for a language
+/// A joined symbol is two or more symbols that together form a specific identifier.
+#[macro_export]
+macro_rules! joined_symbol {
+    ( $([$name:ident, [$($symbol:ident),+] $(,{$($trait:ident),*})* ]),+ ) => {
+        $(
+            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::Token)]
+            pub struct $name {
+                span: $crate::span::SourceSpan,
+            }
+            #[allow(dead_code)]
+            impl $name {
+                /// The symbols that a joined symbol is made from.
+                /// `Symbol` must be constructed and be in scope for this to work.
+                /// See the `[symbol]` macro.
+                pub const SYMBOLS: &'static [Symbol] = &[$(Symbol::$symbol,)+];
+
+                pub fn new(src: std::sync::Arc<str>, start: usize, end: usize) -> Self {
+                    Self { span: $crate::span::SourceSpan::new(src, start, end) }
+                }
+            }
+            impl $crate::span::Span for $name {
+                fn src(&self) -> &str {
+                    self.span.src()
+                }
+                fn start(&self) -> usize {
+                    self.span.start()
+                }
+                fn end(&self) -> usize {
+                    self.span.end()
+                }
+                fn span(&self) -> &str {
+                    self.span.span()
+                }
+                fn len(&self) -> usize {
+                    self.span.len()
+                }
+            }
+            impl std::fmt::Display for $name {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    Ok(Self::SYMBOLS
+                        .iter()
+                        .for_each(|symbol| write!(f, "{symbol}")
+                        .expect("failed to format joined symbol.")))
+                }
+            }
+        )+
+    };
+}
+
+/// A keyword is identifier that is reserved for a language
 ///
 /// Usage:
 /// ```rust,ignore
@@ -234,9 +283,9 @@ impl Span for Ident {
 }
 
 // TODO: Delimited items probably don't belong here, maybe just in the AST.
-/// Denotes that a [`Symbol`] or [`CookedSymbol`] is also classified as a potential [`Delimiter`].
+/// Denotes that a [`Symbol`] or [`JoinedSymbol`] is also classified as a potential [`Delimiter`].
 pub trait Delimiter: Clone + Debug + Span {}
-/// A [`Token`] delimited by some [`Symbol`] or [`CookedSymbol`].
+/// A [`Token`] delimited by some [`Symbol`] or [`JoinedSymbol`].
 //
 /// Delimiters are `Option` since we should try to recover if parsing fails.
 /// [`DelimitedToken`]s are also considered [`Token`]s since they could potentially be nested.
@@ -314,6 +363,7 @@ mod token_tests {
         [OpenParenthesis, '(', { Delimiter }],
         [ClosedParenthesis, ')', { Delimiter }]
     );
+    joined_symbol!([HashBang, [PoundSign, ExclamationMark]]);
     keyword!([If, "if"]);
 
     fn check_spans<S: Span + std::fmt::Debug>(output: S, expect: Expect) {
@@ -338,6 +388,30 @@ mod token_tests {
                         end: 1,
                     },
                 }"##]],
+        );
+    }
+
+    #[test]
+    fn test_joined_symbol() {
+        let joined_symbol_str = HashBang::SYMBOLS
+            .iter()
+            .map(|s| *s.as_ref())
+            .collect::<String>();
+        let src = r#"#!"#;
+        let hashbang = HashBang::new(Arc::from(src), 0, joined_symbol_str.len());
+
+        assert_eq!(joined_symbol_str.len(), hashbang.len());
+        assert_eq!(joined_symbol_str, format!("{hashbang}"));
+        check_spans(
+            hashbang,
+            expect![[r##"
+            HashBang {
+                span: SourceSpan {
+                    src: "#!",
+                    start: 0,
+                    end: 2,
+                },
+            }"##]],
         );
     }
 
