@@ -15,6 +15,12 @@ impl TokenStream {
     pub fn push_back(&mut self, token: Box<dyn Token>) {
         self.0.push_back(token)
     }
+    pub fn pop_back(&mut self) -> Option<Box<dyn Token>> {
+        self.0.pop_back()
+    }
+    pub fn push_front(&mut self, token: Box<dyn Token>) {
+        self.0.push_front(token)
+    }
     pub fn pop_front(&mut self) -> Option<Box<dyn Token>> {
         self.0.pop_front()
     }
