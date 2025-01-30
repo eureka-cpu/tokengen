@@ -220,48 +220,74 @@ impl Ident {
     }
 }
 
+#[derive(Debug)]
+pub struct DelimitedTokenBuilder {
+    open: Option<Box<dyn Delimiter>>,
+    token: Option<Box<dyn Token>>,
+    close: Option<Box<dyn Delimiter>>,
+}
+impl DelimitedTokenBuilder {
+    pub fn new() -> Self {
+        Self {
+            open: None,
+            token: None,
+            close: None,
+        }
+    }
+    pub fn open(self, open: Box<dyn Delimiter>) -> Self {
+        let mut buf = self;
+        buf.open = Some(open);
+        buf
+    }
+    pub fn token(self, token: Box<dyn Token>) -> Self {
+        let mut buf = self;
+        buf.token = Some(token);
+        buf
+    }
+    pub fn close(self, close: Box<dyn Delimiter>) -> Self {
+        let mut buf = self;
+        buf.close = Some(close);
+        buf
+    }
+    pub fn build(self) -> DelimitedToken {
+        DelimitedToken::new(self.open, self.token, self.close)
+    }
+}
+
 /// Denotes that a [`Symbol`] or [`JoinedSymbol`] is also classified as a potential [`Delimiter`].
-pub trait Delimiter: Clone + Debug + Span + Token {}
+pub trait Delimiter: Debug + Span + Token {}
 /// A [`Token`] delimited by some [`Symbol`] or [`JoinedSymbol`].
 //
 /// Delimiters are `Option` since we should try to recover if parsing fails.
 /// [`DelimitedToken`]s are also considered [`Token`]s since they could potentially be nested.
-#[derive(Debug, Clone, PartialEq, Eq, DeriveToken)]
-pub struct DelimitedToken<O, T, C>
-where
-    O: Delimiter,
-    T: Token,
-    C: Delimiter,
-{
-    open: Option<O>,
-    token: Option<T>,
-    close: Option<C>,
+#[derive(Debug, DeriveToken)]
+pub struct DelimitedToken {
+    open: Option<Box<dyn Delimiter>>,
+    token: Option<Box<dyn Token>>,
+    close: Option<Box<dyn Delimiter>>,
 }
-impl<O, T, C> DelimitedToken<O, T, C>
-where
-    O: Delimiter,
-    T: Token,
-    C: Delimiter,
-{
-    pub fn new(open: Option<O>, token: Option<T>, close: Option<C>) -> Self {
+impl DelimitedToken {
+    pub fn builder() -> DelimitedTokenBuilder {
+        DelimitedTokenBuilder::new()
+    }
+    pub fn new(
+        open: Option<Box<dyn Delimiter>>,
+        token: Option<Box<dyn Token>>,
+        close: Option<Box<dyn Delimiter>>,
+    ) -> Self {
         Self { open, token, close }
     }
-    pub fn open(&self) -> Option<&O> {
+    pub fn open(&self) -> Option<&Box<dyn Delimiter>> {
         self.open.as_ref()
     }
-    pub fn token(&self) -> Option<&T> {
+    pub fn token(&self) -> Option<&Box<dyn Token>> {
         self.token.as_ref()
     }
-    pub fn close(&self) -> Option<&C> {
+    pub fn close(&self) -> Option<&Box<dyn Delimiter>> {
         self.close.as_ref()
     }
 }
-impl<O, T, C> Span for DelimitedToken<O, T, C>
-where
-    O: Delimiter,
-    T: Token,
-    C: Delimiter,
-{
+impl Span for DelimitedToken {
     fn src(&self) -> &str {
         self.open()
             .map(|t| t.src())
@@ -291,11 +317,13 @@ mod token_tests {
 
     use std::sync::Arc;
 
-    use super::{DelimitedToken, Delimiter, Token};
-    use crate::span::Span;
     use expect_test::{expect, Expect};
     use tokengen_derive::Delimiter;
 
+    use super::{Delimiter, Token};
+    use crate::{span::Span, token::DelimitedToken};
+
+    #[allow(dead_code)]
     #[derive(Debug, Copy, Clone)]
     struct DummyToken;
     impl Token for DummyToken {}
@@ -398,14 +426,17 @@ mod token_tests {
     }
 
     #[test]
-    fn test_delimiter() {
+    fn test_delimited_token() {
         let open_str = OpenParenthesis::AS_LITERAL.to_string();
         let close_str = ClosedParenthesis::AS_LITERAL.to_string();
         let src = r#"()"#;
         let open = OpenParenthesis::new(Arc::from(src), 0, open_str.len());
         let close =
             ClosedParenthesis::new(Arc::from(src), open.end(), open.end() + close_str.len());
-        let delimited_token = DelimitedToken::new(Some(open), None::<DummyToken>, Some(close));
+        let delimited_token = DelimitedToken::builder()
+            .open(Box::new(open))
+            .close(Box::new(close))
+            .build();
 
         assert_eq!(open_str.len(), delimited_token.open().unwrap().len());
         assert_eq!(close_str.len(), delimited_token.close().unwrap().len());
