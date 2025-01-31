@@ -1,28 +1,22 @@
-use std::{collections::VecDeque, fmt::Debug, sync::Arc};
+use std::{fmt::Debug, sync::Arc};
 
 use crate::span::{SourceSpan, Span};
-pub use tokengen_derive::{Span as DeriveSpan, Token as DeriveToken};
-
-pub trait Token: Debug + Span {}
+pub use tokengen_derive::{
+    DelimiterToken, OperatorToken, PunctuatorToken, Span as DeriveSpan, TokenSum,
+};
 
 #[derive(Debug)]
-pub struct TokenStream(pub VecDeque<Box<dyn Token>>);
-impl TokenStream {
+pub struct TokenStream<T: TokenSumType>(Vec<T>);
+impl<T: TokenSumType> TokenStream<T> {
     /// Create a new token stream from the length of the source to avoid reallocations
     pub fn new(capacity: usize) -> Self {
-        Self(VecDeque::with_capacity(capacity))
+        Self(Vec::with_capacity(capacity))
     }
-    pub fn push_back(&mut self, token: Box<dyn Token>) {
-        self.0.push_back(token)
+    pub fn push(&mut self, token: T) {
+        self.0.push(token)
     }
-    pub fn pop_back(&mut self) -> Option<Box<dyn Token>> {
-        self.0.pop_back()
-    }
-    pub fn push_front(&mut self, token: Box<dyn Token>) {
-        self.0.push_front(token)
-    }
-    pub fn pop_front(&mut self) -> Option<Box<dyn Token>> {
-        self.0.pop_front()
+    pub fn pop(&mut self) -> Option<T> {
+        self.0.pop()
     }
     pub fn len(&self) -> usize {
         self.0.len()
@@ -32,6 +26,49 @@ impl TokenStream {
     }
 }
 
+/// This is so the generated token sum type, eg. whatever your token type actually is,
+/// can be generic when creating a token stream.
+pub trait TokenSumType: Debug + Clone + Span {}
+
+#[macro_export]
+macro_rules! generate_token_sum_type {
+    ( $name:ident, { $($variant:ident),* } ) => {
+        #[allow(dead_code)]
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::TokenSum)]
+        pub enum $name {
+            $($variant($variant),)*
+        }
+        impl Span for $name {
+            fn src(&self) -> &std::sync::Arc<str> {
+                match self {
+                    $(Self::$variant(t) => t.span().src(),)*
+                }
+            }
+            fn start(&self) -> usize {
+                match self {
+                    $(Self::$variant(t) => t.span().start(),)*
+                }
+            }
+            fn end(&self) -> usize {
+                match self {
+                    $(Self::$variant(t) => t.span().end(),)*
+                }
+            }
+            fn span(&self) -> &$crate::span::SourceSpan {
+                match self {
+                    $(Self::$variant(t) => t.span().span(),)*
+                }
+            }
+            fn len(&self) -> usize {
+                match self {
+                    $(Self::$variant(t) => t.span().len(),)*
+                }
+            }
+        }
+    };
+}
+
+// TODO: Add other token errors
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("'{0}' is not part of the set of defined symbols")]
@@ -51,22 +88,19 @@ pub enum Error {
 ///
 /// Usage:
 /// ```rust,ignore
-/// // [StructIdentifier, 'char', [Alias1, Alias2], { DeriveTrait1, DeriveTrait2 }]
+/// // [StructIdentifier, 'char', { DeriveTrait1, DeriveTrait2 }]
 /// symbols!(
-///     [ExclamationMark, '!', [Bang]],
-///     [PoundSign, '#', [Hash]],
-///     [OpenParenthesis, '(', { Delimiter }],
-///     [ClosedParenthesis, ')', { Delimiter }]
+///     [ExclamationMark, '!'],
+///     [PoundSign, '#'],
+///     [OpenParenthesis, '('],
+///     [ClosedParenthesis, ')']
 /// );
 /// ```
 #[macro_export]
 macro_rules! symbols {
-    ( $([$name:ident, $char:literal $(,[$($alias:ident),*]),* $(,{$($trait:ident),*})* ]),+ ) => {
+    ( $([$name:ident, $char:literal $(,{$($trait:ident),*})* ]),+ ) => {
         $(
-            #[allow(dead_code)] // Ignore warnings if alias is never used
-            $($(pub type $alias = $name;)*)*
-
-            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveSpan, $crate::token::DeriveToken $(,$($trait,)*)*)]
+            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveSpan $(,$($trait,)*)*)]
             pub struct $name {
                 span: $crate::span::SourceSpan,
             }
@@ -74,8 +108,8 @@ macro_rules! symbols {
                 pub const AS_LITERAL: &'static char = &$char;
 
                 #[allow(dead_code)] // Ignore warnings if constructor is never used
-                pub fn new(src: std::sync::Arc<str>, start: usize, end: usize) -> Self {
-                    Self { span: $crate::span::SourceSpan::new(src, start, end) }
+                pub fn new(src: std::sync::Arc<str>, start: usize) -> Self {
+                    Self { span: $crate::span::SourceSpan::new(src, start, start + $char.len_utf8()) }
                 }
             }
             impl AsRef<char> for $name {
@@ -125,7 +159,7 @@ macro_rules! symbols {
 macro_rules! joined_symbols {
     ( $([$name:ident, [$($symbol:ident),+] $(,{$($trait:ident),*})* ]),+ ) => {
         $(
-            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveSpan, $crate::token::DeriveToken)]
+            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveSpan)]
             pub struct $name {
                 span: $crate::span::SourceSpan,
             }
@@ -136,8 +170,8 @@ macro_rules! joined_symbols {
                 /// See the `[symbol]` macro.
                 pub const SYMBOLS: &'static [Symbol] = &[$(Symbol::$symbol,)+];
 
-                pub fn new(src: std::sync::Arc<str>, start: usize, end: usize) -> Self {
-                    Self { span: $crate::span::SourceSpan::new(src, start, end) }
+                pub fn new(src: std::sync::Arc<str>, start: usize) -> Self {
+                    Self { span: $crate::span::SourceSpan::new(src, start, start + Self::SYMBOLS.iter().map(|s| s.as_ref().len_utf8()).sum::<usize>()) }
                 }
             }
             impl std::fmt::Display for $name {
@@ -152,6 +186,110 @@ macro_rules! joined_symbols {
     };
 }
 
+pub trait OperatorToken: Debug + Clone + Span {}
+
+#[macro_export]
+macro_rules! operators {
+    ( $([$name:ident, [$($symbol:ident),+] $(,{$($trait:ident),*})* ]),+ ) => {
+        $(
+            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveSpan)]
+            pub struct $name {
+                span: $crate::span::SourceSpan,
+            }
+            #[allow(dead_code)]
+            impl $name {
+                /// The symbols that a joined symbol is made from.
+                /// `Symbol` must be constructed and be in scope for this to work.
+                /// See the `[symbol]` macro.
+                pub const SYMBOLS: &'static [Symbol] = &[$(Symbol::$symbol,)+];
+
+                pub fn new(src: std::sync::Arc<str>, start: usize) -> Self {
+                    Self { span: $crate::span::SourceSpan::new(src, start, start + Self::SYMBOLS.iter().map(|s| s.as_ref().len_utf8()).sum::<usize>()) }
+                }
+            }
+            impl std::fmt::Display for $name {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    Ok(Self::SYMBOLS
+                        .iter()
+                        .for_each(|symbol| write!(f, "{symbol}")
+                        .expect("failed to format joined symbol.")))
+                }
+            }
+        )+
+        #[allow(dead_code)]
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::OperatorToken)]
+        pub enum OperatorKind {
+            $($name,)+
+        }
+        impl AsRef<str> for OperatorKind {
+            fn as_ref(&self) -> &str {
+                match self {
+                    $(Self::$name => $name::SYMBOLS,)+
+                }
+            }
+        }
+        impl std::fmt::Display for OperatorKind {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    $(Self::$name => write!(f, "{}", $name::SYMBOLS.iter().map(|s| s.as_ref()).collect::<String>()),)+
+                }
+            }
+        }
+    };
+}
+
+pub trait PunctuatorToken: Debug + Clone + Span {}
+
+#[macro_export]
+macro_rules! punctuators {
+    ( $([$name:ident, [$($symbol:ident),+] $(,{$($trait:ident),*})* ]),+ ) => {
+        $(
+            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveSpan)]
+            pub struct $name {
+                span: $crate::span::SourceSpan,
+            }
+            #[allow(dead_code)]
+            impl $name {
+                /// The symbols that a joined symbol is made from.
+                /// `Symbol` must be constructed and be in scope for this to work.
+                /// See the `[symbol]` macro.
+                pub const SYMBOLS: &'static [Symbol] = &[$(Symbol::$symbol,)+];
+
+                pub fn new(src: std::sync::Arc<str>, start: usize) -> Self {
+                    Self { span: $crate::span::SourceSpan::new(src, start, start + Self::SYMBOLS.iter().map(|s| s.as_ref().len_utf8()).sum::<usize>()) }
+                }
+            }
+            impl std::fmt::Display for $name {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    Ok(Self::SYMBOLS
+                        .iter()
+                        .for_each(|symbol| write!(f, "{symbol}")
+                        .expect("failed to format joined symbol.")))
+                }
+            }
+        )+
+        #[allow(dead_code)]
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::PunctuatorToken)]
+        pub enum PunctuatorKind {
+            $($name,)+
+        }
+        impl AsRef<str> for PunctuatorKind {
+            fn as_ref(&self) -> &str {
+                match self {
+                    $(Self::$name => $name::SYMBOLS,)+
+                }
+            }
+        }
+        impl std::fmt::Display for PunctuatorKind {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    $(Self::$name => write!(f, "{}", $name::SYMBOLS.iter().map(|s| s.as_ref()).collect::<String>()),)+
+                }
+            }
+        }
+    };
+}
+
 /// A keyword is identifier that is reserved for a language
 ///
 /// Usage:
@@ -163,7 +301,7 @@ macro_rules! joined_symbols {
 macro_rules! keywords {
     ( $([$name:ident, $str:literal]),+ ) => {
         $(
-            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveSpan, $crate::token::DeriveToken)]
+            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveSpan)]
             pub struct $name {
                 span: $crate::span::SourceSpan,
             }
@@ -188,16 +326,49 @@ macro_rules! keywords {
         #[allow(dead_code)]
         #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
         pub enum Keyword {
+            $($name($name),)+
+        }
+        impl Span for Keyword {
+            fn src(&self) -> &std::sync::Arc<str> {
+                match self {
+                    $(Self::$name(k) => k.span.src(),)+
+                }
+            }
+            fn start(&self) -> usize {
+                match self {
+                    $(Self::$name(k) => k.span.start(),)+
+                }
+            }
+            fn end(&self) -> usize {
+                match self {
+                    $(Self::$name(k) => k.span.end(),)+
+                }
+            }
+            fn span(&self) -> &$crate::span::SourceSpan {
+                match self {
+                    $(Self::$name(k) => k.span.span(),)+
+                }
+            }
+            fn len(&self) -> usize {
+                match self {
+                    $(Self::$name(k) => k.span.len(),)+
+                }
+            }
+        }
+
+        #[allow(dead_code)]
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+        pub enum KeywordKind {
             $($name,)+
         }
-        impl AsRef<str> for Keyword {
+        impl AsRef<str> for KeywordKind {
             fn as_ref(&self) -> &str {
                 match self {
                     $(Self::$name => $name::AS_LITERAL,)+
                 }
             }
         }
-        impl std::fmt::Display for Keyword {
+        impl std::fmt::Display for KeywordKind {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
                     $(Self::$name => write!(f, "{}", self.as_ref()),)+
@@ -208,7 +379,7 @@ macro_rules! keywords {
 }
 
 /// An identifier is the name used to uniquely identify variables, functions, classes, modules, or other user-defined entities
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, DeriveSpan, DeriveToken)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, DeriveSpan)]
 pub struct Ident {
     span: SourceSpan,
 }
@@ -220,13 +391,87 @@ impl Ident {
     }
 }
 
-#[derive(Debug)]
-pub struct DelimitedTokenBuilder {
-    open: Option<Box<dyn Delimiter>>,
-    token: Option<Box<dyn Token>>,
-    close: Option<Box<dyn Delimiter>>,
+#[macro_export]
+macro_rules! delimiters {
+    ( $([$name:ident, [$($symbol:ident),+] $(,{$($trait:ident),*})* ]),+ ) => {
+        $(
+            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DeriveSpan, $(,$($trait,)*)*)]
+            pub struct $name {
+                span: $crate::span::SourceSpan,
+            }
+            #[allow(dead_code)]
+            impl $name {
+                /// The symbols that a joined symbol is made from.
+                /// `Symbol` must be constructed and be in scope for this to work.
+                /// See the `[symbol]` macro.
+                pub const SYMBOLS: &'static [Symbol] = &[$(Symbol::$symbol,)+];
+
+                pub fn new(src: std::sync::Arc<str>, start: usize) -> Self {
+                    Self { span: $crate::span::SourceSpan::new(src, start, start + Self::SYMBOLS.iter().map(|s| s.as_ref().len_utf8()).sum::<usize>()) }
+                }
+            }
+            impl std::fmt::Display for $name {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    Ok(Self::SYMBOLS
+                        .iter()
+                        .for_each(|symbol| write!(f, "{symbol}")
+                        .expect("failed to format joined symbol.")))
+                }
+            }
+        )+
+        #[allow(dead_code)]
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::DelimiterToken)]
+        pub enum Delimiter {
+            $($name($name),)+
+        }
+        impl Span for Delimiter {
+            fn src(&self) -> &std::sync::Arc<str> {
+                match self {
+                    $(Self::$name(d) => d.span.src(),)+
+                }
+            }
+            fn start(&self) -> usize {
+                match self {
+                    $(Self::$name(d) => d.span.start(),)+
+                }
+            }
+            fn end(&self) -> usize {
+                match self {
+                    $(Self::$name(d) => d.span.end(),)+
+                }
+            }
+            fn span(&self) -> &$crate::span::SourceSpan {
+                match self {
+                    $(Self::$name(d) => d.span.span(),)+
+                }
+            }
+            fn len(&self) -> usize {
+                match self {
+                    $(Self::$name(d) => d.span.len(),)+
+                }
+            }
+        }
+        impl std::fmt::Display for Delimiter {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    $(Self::$name(_) => write!(f, "{}", $name::SYMBOLS.iter().map(|s| s.as_ref()).collect::<String>()),)+
+                }
+            }
+        }
+    };
 }
-impl DelimitedTokenBuilder {
+
+pub trait DelimiterToken: Debug + Clone + Span {}
+
+/// This uses generics since the tokens and consequently, the union types
+/// are not yet created. The only type DelimiterToken is implemented for is Delimiter.
+#[derive(Debug, Clone, Copy)]
+pub struct DelimitedTokenBuilder<D: DelimiterToken, T: TokenSumType> {
+    open: Option<D>,
+    token: Option<T>,
+    close: Option<D>,
+}
+impl<D: DelimiterToken, T: TokenSumType> DelimitedTokenBuilder<D, T> {
     pub fn new() -> Self {
         Self {
             open: None,
@@ -234,61 +479,82 @@ impl DelimitedTokenBuilder {
             close: None,
         }
     }
-    pub fn open(self, open: Box<dyn Delimiter>) -> Self {
+    pub fn open(self, open: D) -> Self {
         let mut buf = self;
         buf.open = Some(open);
         buf
     }
-    pub fn token(self, token: Box<dyn Token>) -> Self {
+    pub fn token(self, token: T) -> Self {
         let mut buf = self;
         buf.token = Some(token);
         buf
     }
-    pub fn close(self, close: Box<dyn Delimiter>) -> Self {
+    pub fn close(self, close: D) -> Self {
         let mut buf = self;
         buf.close = Some(close);
         buf
     }
-    pub fn build(self) -> DelimitedToken {
-        DelimitedToken::new(self.open, self.token, self.close)
+    pub fn build(self) -> DelimitedToken<D, T> {
+        let open = self.open;
+        let token = self.token;
+        let close = self.close;
+
+        let open_ref = open
+            .as_ref()
+            .expect("Cannot build DelimitedToken without opening delimiter");
+        let start = open_ref.start();
+        let end = if let Some(close) = &close {
+            close.end()
+        } else if let Some(token) = &token {
+            token.end()
+        } else {
+            open_ref.end()
+        };
+        let span = SourceSpan::new(open_ref.src().clone(), start, end);
+
+        DelimitedToken::new(open, token, close, span)
     }
 }
 
-/// Denotes that a [`Symbol`] or [`JoinedSymbol`] is also classified as a potential [`Delimiter`].
-pub trait Delimiter: Debug + Span + Token {}
 /// A [`Token`] delimited by some [`Symbol`] or [`JoinedSymbol`].
 //
 /// Delimiters are `Option` since we should try to recover if parsing fails.
 /// [`DelimitedToken`]s are also considered [`Token`]s since they could potentially be nested.
-#[derive(Debug, DeriveToken)]
-pub struct DelimitedToken {
-    open: Option<Box<dyn Delimiter>>,
-    token: Option<Box<dyn Token>>,
-    close: Option<Box<dyn Delimiter>>,
+#[derive(Debug, Clone)]
+pub struct DelimitedToken<D: DelimiterToken, T: TokenSumType> {
+    open: Option<D>,
+    token: Option<T>,
+    close: Option<D>,
+    /// The lexer will never not have the opening delimiter, since that is what we match for.
+    /// Mostly the span here is just for testing and to appease the trait constraint.
+    /// If/When the span is actually needed, eg. for error handling etc, each part of the token
+    /// will be checked for anyway.
+    span: SourceSpan,
 }
-impl DelimitedToken {
-    pub fn builder() -> DelimitedTokenBuilder {
+impl<D: DelimiterToken, T: TokenSumType> DelimitedToken<D, T> {
+    pub fn builder() -> DelimitedTokenBuilder<D, T> {
         DelimitedTokenBuilder::new()
     }
-    pub fn new(
-        open: Option<Box<dyn Delimiter>>,
-        token: Option<Box<dyn Token>>,
-        close: Option<Box<dyn Delimiter>>,
-    ) -> Self {
-        Self { open, token, close }
+    pub fn new(open: Option<D>, token: Option<T>, close: Option<D>, span: SourceSpan) -> Self {
+        Self {
+            open,
+            token,
+            close,
+            span,
+        }
     }
-    pub fn open(&self) -> Option<&Box<dyn Delimiter>> {
+    pub fn open(&self) -> Option<&D> {
         self.open.as_ref()
     }
-    pub fn token(&self) -> Option<&Box<dyn Token>> {
+    pub fn token(&self) -> Option<&T> {
         self.token.as_ref()
     }
-    pub fn close(&self) -> Option<&Box<dyn Delimiter>> {
+    pub fn close(&self) -> Option<&D> {
         self.close.as_ref()
     }
 }
-impl Span for DelimitedToken {
-    fn src(&self) -> &str {
+impl<D: DelimiterToken, T: TokenSumType> Span for DelimitedToken<D, T> {
+    fn src(&self) -> &Arc<str> {
         self.open()
             .map(|t| t.src())
             .or(self
@@ -303,8 +569,8 @@ impl Span for DelimitedToken {
     fn end(&self) -> usize {
         self.close().unwrap().end()
     }
-    fn span(&self) -> &str {
-        &self.src()[self.start()..self.end()]
+    fn span(&self) -> &SourceSpan {
+        &self.span
     }
     fn len(&self) -> usize {
         (self.start()..self.end()).count()
@@ -318,40 +584,24 @@ mod token_tests {
     use std::sync::Arc;
 
     use expect_test::{expect, Expect};
-    use tokengen_derive::Delimiter;
 
-    use super::{Delimiter, Token};
-    use crate::{span::Span, token::DelimitedToken};
+    use crate::{
+        span::{SourceSpan, Span},
+        token::{DelimitedToken, DelimiterToken, TokenSumType},
+    };
 
-    #[allow(dead_code)]
-    #[derive(Debug, Copy, Clone)]
-    struct DummyToken;
-    impl Token for DummyToken {}
-    impl Span for DummyToken {
-        fn src(&self) -> &str {
-            ""
-        }
-        fn start(&self) -> usize {
-            0
-        }
-        fn end(&self) -> usize {
-            0
-        }
-        fn span(&self) -> &str {
-            &self.src()[self.start()..self.end()]
-        }
-        fn len(&self) -> usize {
-            self.src().len()
-        }
-    }
-
+    generate_token_sum_type!(DummyToken, { Delimiter, Keyword });
     symbols!(
-        [ExclamationMark, '!', [Bang]],
-        [PoundSign, '#', [Hash]],
-        [OpenParenthesis, '(', { Delimiter }],
-        [ClosedParenthesis, ')', { Delimiter }]
+        [ExclamationMark, '!'],
+        [PoundSign, '#'],
+        [OpenedParenthesis, '('],
+        [ClosedParenthesis, ')']
     );
     joined_symbols!([HashBang, [PoundSign, ExclamationMark]]);
+    delimiters!(
+        [OpenParenthesis, [OpenedParenthesis]],
+        [CloseParenthesis, [ClosedParenthesis]]
+    );
     keywords!([If, "if"]);
 
     fn check_spans<S: Span + std::fmt::Debug>(output: S, expect: Expect) {
@@ -362,7 +612,7 @@ mod token_tests {
     fn test_symbol() {
         let symbol_str = PoundSign::AS_LITERAL.to_string();
         let src = r#"# Hello, World!"#;
-        let hash = Hash::new(Arc::from(src), 0, symbol_str.len());
+        let hash = PoundSign::new(Arc::from(src), 0);
 
         assert_eq!(symbol_str.len(), hash.len());
         assert_eq!(symbol_str, format!("{hash}"));
@@ -386,7 +636,7 @@ mod token_tests {
             .map(|s| *s.as_ref())
             .collect::<String>();
         let src = r#"#!"#;
-        let hashbang = HashBang::new(Arc::from(src), 0, joined_symbol_str.len());
+        let hashbang = HashBang::new(Arc::from(src), 0);
 
         assert_eq!(joined_symbol_str.len(), hashbang.len());
         assert_eq!(joined_symbol_str, format!("{hashbang}"));
@@ -411,7 +661,7 @@ mod token_tests {
 
         assert_eq!(keyword_str.len(), if_keyword.len());
         assert_eq!(keyword_str, format!("{if_keyword}"));
-        assert_eq!(keyword_str, if_keyword.span());
+        assert_eq!(keyword_str, if_keyword.span().as_str());
         check_spans(
             if_keyword,
             expect![[r#"
@@ -427,44 +677,53 @@ mod token_tests {
 
     #[test]
     fn test_delimited_token() {
-        let open_str = OpenParenthesis::AS_LITERAL.to_string();
-        let close_str = ClosedParenthesis::AS_LITERAL.to_string();
         let src = r#"()"#;
-        let open = OpenParenthesis::new(Arc::from(src), 0, open_str.len());
-        let close =
-            ClosedParenthesis::new(Arc::from(src), open.end(), open.end() + close_str.len());
-        let delimited_token = DelimitedToken::builder()
-            .open(Box::new(open))
-            .close(Box::new(close))
+        let open = Delimiter::OpenParenthesis(OpenParenthesis::new(Arc::from(src), 0));
+        let close = Delimiter::CloseParenthesis(CloseParenthesis::new(Arc::from(src), 1));
+        let delimited_token: DelimitedToken<Delimiter, DummyToken> = DelimitedToken::builder()
+            .open(open.clone())
+            .close(close.clone())
             .build();
+
+        let open_str = open.to_string();
+        let close_str = close.to_string();
 
         assert_eq!(open_str.len(), delimited_token.open().unwrap().len());
         assert_eq!(close_str.len(), delimited_token.close().unwrap().len());
-        assert_eq!(open_str, delimited_token.open().unwrap().span());
-        assert_eq!(close_str, delimited_token.close().unwrap().span());
+        assert_eq!(open_str, delimited_token.open().unwrap().span().as_str());
+        assert_eq!(close_str, delimited_token.close().unwrap().span().as_str());
         check_spans(
             delimited_token,
             expect![[r#"
                 DelimitedToken {
                     open: Some(
-                        OpenParenthesis {
-                            span: SourceSpan {
-                                src: "(",
-                                start: 0,
-                                end: 1,
+                        OpenParenthesis(
+                            OpenParenthesis {
+                                span: SourceSpan {
+                                    src: "(",
+                                    start: 0,
+                                    end: 1,
+                                },
                             },
-                        },
+                        ),
                     ),
                     token: None,
                     close: Some(
-                        ClosedParenthesis {
-                            span: SourceSpan {
-                                src: ")",
-                                start: 1,
-                                end: 2,
+                        CloseParenthesis(
+                            CloseParenthesis {
+                                span: SourceSpan {
+                                    src: ")",
+                                    start: 1,
+                                    end: 2,
+                                },
                             },
-                        },
+                        ),
                     ),
+                    span: SourceSpan {
+                        src: "()",
+                        start: 0,
+                        end: 2,
+                    },
                 }"#]],
         );
     }

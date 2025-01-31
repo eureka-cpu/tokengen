@@ -2,7 +2,55 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput};
 
-#[proc_macro_derive(Delimiter)]
+#[proc_macro_derive(OperatorToken)]
+pub fn derive_operator(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = input.ident;
+    let expanded = if !input.generics.params.is_empty() {
+        let gen = input.generics.params;
+        if let Some(where_clause) = input.generics.where_clause {
+            quote! {
+                impl<#gen> OperatorToken for #name<#gen> #where_clause {}
+            }
+        } else {
+            quote! {
+                impl<#gen> OperatorToken for #name<#gen> {}
+            }
+        }
+    } else {
+        quote! {
+            impl OperatorToken for #name {}
+        }
+    };
+
+    TokenStream::from(expanded)
+}
+
+#[proc_macro_derive(PunctuatorToken)]
+pub fn derive_punctuator(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = input.ident;
+    let expanded = if !input.generics.params.is_empty() {
+        let gen = input.generics.params;
+        if let Some(where_clause) = input.generics.where_clause {
+            quote! {
+                impl<#gen> PunctuatorToken for #name<#gen> #where_clause {}
+            }
+        } else {
+            quote! {
+                impl<#gen> PunctuatorToken for #name<#gen> {}
+            }
+        }
+    } else {
+        quote! {
+            impl PunctuatorToken for #name {}
+        }
+    };
+
+    TokenStream::from(expanded)
+}
+
+#[proc_macro_derive(DelimiterToken)]
 pub fn derive_delimiter(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = input.ident;
@@ -10,40 +58,40 @@ pub fn derive_delimiter(input: TokenStream) -> TokenStream {
         let gen = input.generics.params;
         if let Some(where_clause) = input.generics.where_clause {
             quote! {
-                impl<#gen> Delimiter for #name<#gen> #where_clause {}
+                impl<#gen> DelimiterToken for #name<#gen> #where_clause {}
             }
         } else {
             quote! {
-                impl<#gen> Delimiter for #name<#gen> {}
+                impl<#gen> DelimiterToken for #name<#gen> {}
             }
         }
     } else {
         quote! {
-            impl Delimiter for #name {}
+            impl DelimiterToken for #name {}
         }
     };
 
     TokenStream::from(expanded)
 }
 
-#[proc_macro_derive(Token)]
-pub fn derive_token(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(TokenSum)]
+pub fn derive_token_sum(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = input.ident;
     let expanded = if !input.generics.params.is_empty() {
         let gen = input.generics.params;
         if let Some(where_clause) = input.generics.where_clause {
             quote! {
-                impl<#gen> Token for #name<#gen> #where_clause {}
+                impl<#gen> TokenSumType for #name<#gen> #where_clause {}
             }
         } else {
             quote! {
-                impl<#gen> Token for #name<#gen> {}
+                impl<#gen> TokenSumType for #name<#gen> {}
             }
         }
     } else {
         quote! {
-            impl Token for #name {}
+            impl TokenSumType for #name {}
         }
     };
 
@@ -60,7 +108,7 @@ pub fn derive_span(input: TokenStream) -> TokenStream {
         if let Some(where_clause) = input.generics.where_clause {
             quote! {
                 impl<#gen> Span for #name<#gen> #where_clause {
-                    fn src(&self) -> &str {
+                    fn src(&self) -> &std::sync::Arc<str> {
                         self.span.src()
                     }
                     fn start(&self) -> usize {
@@ -69,7 +117,7 @@ pub fn derive_span(input: TokenStream) -> TokenStream {
                     fn end(&self) -> usize {
                         self.span.end()
                     }
-                    fn span(&self) -> &str {
+                    fn span(&self) -> &SourceSpan {
                         self.span.span()
                     }
                     fn len(&self) -> usize {
@@ -80,7 +128,7 @@ pub fn derive_span(input: TokenStream) -> TokenStream {
         } else {
             quote! {
                 impl<#gen> Span for #name<#gen> {
-                    fn src(&self) -> &str {
+                    fn src(&self) -> &std::sync::Arc<str> {
                         self.span.src()
                     }
                     fn start(&self) -> usize {
@@ -89,7 +137,7 @@ pub fn derive_span(input: TokenStream) -> TokenStream {
                     fn end(&self) -> usize {
                         self.span.end()
                     }
-                    fn span(&self) -> &str {
+                    fn span(&self) -> &SourceSpan {
                         self.span.span()
                     }
                     fn len(&self) -> usize {
@@ -101,7 +149,7 @@ pub fn derive_span(input: TokenStream) -> TokenStream {
     } else {
         quote! {
             impl Span for #name {
-                fn src(&self) -> &str {
+                fn src(&self) -> &std::sync::Arc<str> {
                     self.span.src()
                 }
                 fn start(&self) -> usize {
@@ -110,7 +158,7 @@ pub fn derive_span(input: TokenStream) -> TokenStream {
                 fn end(&self) -> usize {
                     self.span.end()
                 }
-                fn span(&self) -> &str {
+                fn span(&self) -> &SourceSpan {
                     self.span.span()
                 }
                 fn len(&self) -> usize {
