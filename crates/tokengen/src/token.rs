@@ -270,8 +270,42 @@ macro_rules! punctuators {
                 }
             }
         )+
+
         #[allow(dead_code)]
         #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::PunctuatorToken)]
+        pub enum Punctuator {
+            $($name($name),)+
+        }
+        impl Span for Punctuator {
+            fn src(&self) -> &std::sync::Arc<str> {
+                match self {
+                    $(Self::$name(p) => p.span.src(),)+
+                }
+            }
+            fn start(&self) -> usize {
+                match self {
+                    $(Self::$name(p) => p.span.start(),)+
+                }
+            }
+            fn end(&self) -> usize {
+                match self {
+                    $(Self::$name(p) => p.span.end(),)+
+                }
+            }
+            fn span(&self) -> &$crate::span::SourceSpan {
+                match self {
+                    $(Self::$name(p) => p.span.span(),)+
+                }
+            }
+            fn len(&self) -> usize {
+                match self {
+                    $(Self::$name(p) => p.span.len(),)+
+                }
+            }
+        }
+
+        #[allow(dead_code)]
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
         pub enum PunctuatorKind {
             $($name,)+
         }
@@ -285,7 +319,7 @@ macro_rules! punctuators {
         impl std::fmt::Display for PunctuatorKind {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
-                    $(Self::$name => write!(f, "{}", $name::SYMBOLS.iter().map(|s| s.as_ref()).collect::<String>()),)+
+                    $(Self::$name => write!(f, "{}", $name::SYMBOLS.iter().collect::<String>()),)+
                 }
             }
         }
