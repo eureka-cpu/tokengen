@@ -309,13 +309,6 @@ macro_rules! punctuators {
         pub enum PunctuatorKind {
             $($name,)+
         }
-        impl AsRef<str> for PunctuatorKind {
-            fn as_ref(&self) -> &str {
-                match self {
-                    $(Self::$name => $name::SYMBOLS,)+
-                }
-            }
-        }
         impl std::fmt::Display for PunctuatorKind {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
@@ -613,6 +606,7 @@ impl<D: DelimiterToken, T: TokenSumType> Span for DelimitedToken<D, T> {
     }
 }
 
+#[allow(dead_code)]
 #[cfg(test)]
 mod token_tests {
     //! Tests for asserting that the macros expand as expected.
@@ -623,21 +617,65 @@ mod token_tests {
 
     use crate::{
         span::{SourceSpan, Span},
-        token::{DelimitedToken, DelimiterToken, TokenSumType},
+        token::{DelimitedToken, DelimiterToken, PunctuatorToken, TokenSumType},
     };
 
     generate_token_sum_type!(DummyToken, { Delimiter, Keyword });
     symbols!(
+        [PERIOD, '.'],
+        [QUESTION_MARK, '?'],
         [EXCLAMATION_MARK, '!'],
+        [COMMA, ','],
+        [COLON, ':'],
+        [SEMICOLON, ';'],
+        [HYPHEN, '-'],
+        [UNDERSCORE, '_'],
+        [PLUS, '+'],
+        [EQUALS, '='],
+        [PIPE, '|'],
+        [FORWARD_SLASH, '/'],
+        [BACK_SLASH, '\\'],
+        [ASTERISK, '*'],
+        [AMPERSAND, '&'],
+        [AT, '@'],
         [POUND_SIGN, '#'],
+        [DOLLAR, '$'],
+        [BACKTICK, '`'],
+        [SINGLE_QUOTE, '\''],
+        [DOUBLE_QUOTE, '\"'],
+        [OPEN_ANGLE_BRACKET, '<'],
+        [CLOSE_ANGLE_BRACKET, '>'],
         [OPEN_PARENTHESIS, '('],
-        [CLOSE_PARENTHESIS, ')']
+        [CLOSE_PARENTHESIS, ')'],
+        [OPEN_SQUARE_BRACKET, '['],
+        [CLOSE_SQUARE_BRACKET, ']'],
+        [OPEN_CURLY_BRACE, '{'],
+        [CLOSE_CURLY_BRACE, '}']
+    );
+
+    punctuators!(
+        [AttributeSelection, [PERIOD]],
+        [ArithmeticNegation, [HYPHEN]],
+        [HasAttribute, [QUESTION_MARK]],
+        [ListConcatination, [PLUS, PLUS]],
+        [Multiplication, [ASTERISK]],
+        [Division, [FORWARD_SLASH]]
+    );
+
+    delimiters!(
+        [DoubleQuote, [DOUBLE_QUOTE]],
+        [DoubleSingleQuote, [SINGLE_QUOTE, SINGLE_QUOTE]],
+        [OpenAngleBracket, [OPEN_ANGLE_BRACKET]],
+        [CloseAngleBracket, [CLOSE_ANGLE_BRACKET]],
+        [OpenParenthesis, [OPEN_PARENTHESIS]],
+        [CloseParenthesis, [CLOSE_PARENTHESIS]],
+        [OpenSquareBracket, [OPEN_SQUARE_BRACKET]],
+        [CloseSquareBracket, [CLOSE_SQUARE_BRACKET]],
+        [OpenCurlyBrace, [OPEN_CURLY_BRACE]],
+        [CloseCurlyBrace, [CLOSE_CURLY_BRACE]],
+        [DollarCurly, [DOLLAR, OPEN_CURLY_BRACE]]
     );
     joined_symbols!([HashBang, [POUND_SIGN, EXCLAMATION_MARK]]);
-    delimiters!(
-        [OpenParenthesis, [OPEN_PARENTHESIS]],
-        [CloseParenthesis, [CLOSE_PARENTHESIS]]
-    );
     keywords!([If, "if"]);
 
     fn check_spans<S: Span + std::fmt::Debug>(output: S, expect: Expect) {
