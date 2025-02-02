@@ -6,8 +6,8 @@ pub use tokengen_derive::{
 };
 
 #[derive(Debug)]
-pub struct TokenStream<T: TokenSumType>(Vec<T>);
-impl<T: TokenSumType> TokenStream<T> {
+pub struct TokenStream<T: Span>(Vec<T>);
+impl<T: Span> TokenStream<T> {
     /// Create a new token stream from the length of the source to avoid reallocations
     pub fn new(capacity: usize) -> Self {
         Self(Vec::with_capacity(capacity))
@@ -26,15 +26,11 @@ impl<T: TokenSumType> TokenStream<T> {
     }
 }
 
-/// This is so the generated token sum type, eg. whatever your token type actually is,
-/// can be generic when creating a token stream.
-pub trait TokenSumType: Debug + Clone + Span {}
-
 #[macro_export]
 macro_rules! generate_token_sum_type {
     ( $name:ident, { $($variant:ident),* } ) => {
         #[allow(dead_code)]
-        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::TokenSum)]
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
         pub enum $name {
             $($variant($variant),)*
         }
@@ -521,12 +517,12 @@ pub trait DelimiterToken: Debug + Clone + Span {}
 /// This uses generics since the tokens and consequently, the union types
 /// are not yet created. The only type DelimiterToken is implemented for is Delimiter.
 #[derive(Debug, Clone, Copy)]
-pub struct DelimitedTokenBuilder<D: DelimiterToken, T: TokenSumType> {
+pub struct DelimitedTokenBuilder<D: DelimiterToken, T: Span> {
     open: Option<D>,
     token: Option<T>,
     close: Option<D>,
 }
-impl<D: DelimiterToken, T: TokenSumType> DelimitedTokenBuilder<D, T> {
+impl<D: DelimiterToken, T: Span> DelimitedTokenBuilder<D, T> {
     pub fn new() -> Self {
         Self {
             open: None,
@@ -576,7 +572,7 @@ impl<D: DelimiterToken, T: TokenSumType> DelimitedTokenBuilder<D, T> {
 /// Delimiters are `Option` since we should try to recover if parsing fails.
 /// [`DelimitedToken`]s are also considered [`Token`]s since they could potentially be nested.
 #[derive(Debug, Clone)]
-pub struct DelimitedToken<D: DelimiterToken, T: TokenSumType> {
+pub struct DelimitedToken<D: DelimiterToken, T: Span> {
     open: Option<D>,
     token: Option<T>,
     close: Option<D>,
@@ -586,7 +582,7 @@ pub struct DelimitedToken<D: DelimiterToken, T: TokenSumType> {
     /// will be checked for anyway.
     span: SourceSpan,
 }
-impl<D: DelimiterToken, T: TokenSumType> DelimitedToken<D, T> {
+impl<D: DelimiterToken, T: Span> DelimitedToken<D, T> {
     pub fn builder() -> DelimitedTokenBuilder<D, T> {
         DelimitedTokenBuilder::new()
     }
@@ -608,7 +604,7 @@ impl<D: DelimiterToken, T: TokenSumType> DelimitedToken<D, T> {
         self.close.as_ref()
     }
 }
-impl<D: DelimiterToken, T: TokenSumType> Span for DelimitedToken<D, T> {
+impl<D: DelimiterToken, T: Span> Span for DelimitedToken<D, T> {
     fn src(&self) -> &Arc<str> {
         self.open()
             .map(|t| t.src())
@@ -643,7 +639,7 @@ mod token_tests {
 
     use crate::{
         span::{SourceSpan, Span},
-        token::{DelimitedToken, DelimiterToken, OperatorToken, TokenSumType},
+        token::{DelimitedToken, DelimiterToken, OperatorToken},
     };
 
     generate_token_sum_type!(DummyToken, { Delimiter, Keyword });
