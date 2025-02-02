@@ -28,39 +28,41 @@ impl<T: Span> TokenStream<T> {
 
 #[macro_export]
 macro_rules! generate_token_sum_type {
-    ( $name:ident, { $($variant:ident),* } ) => {
-        #[allow(dead_code)]
-        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-        pub enum $name {
-            $($variant($variant),)*
-        }
-        impl Span for $name {
-            fn src(&self) -> &std::sync::Arc<str> {
-                match self {
-                    $(Self::$variant(t) => t.span().src(),)*
+    ( $([$name:ident, { $($variant:ident),* }]),+ ) => {
+        $(
+            #[allow(dead_code)]
+            #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+            pub enum $name {
+                $($variant($variant),)*
+            }
+            impl Span for $name {
+                fn src(&self) -> &std::sync::Arc<str> {
+                    match self {
+                        $(Self::$variant(t) => t.span().src(),)*
+                    }
+                }
+                fn start(&self) -> usize {
+                    match self {
+                        $(Self::$variant(t) => t.span().start(),)*
+                    }
+                }
+                fn end(&self) -> usize {
+                    match self {
+                        $(Self::$variant(t) => t.span().end(),)*
+                    }
+                }
+                fn span(&self) -> &$crate::span::SourceSpan {
+                    match self {
+                        $(Self::$variant(t) => t.span().span(),)*
+                    }
+                }
+                fn len(&self) -> usize {
+                    match self {
+                        $(Self::$variant(t) => t.span().len(),)*
+                    }
                 }
             }
-            fn start(&self) -> usize {
-                match self {
-                    $(Self::$variant(t) => t.span().start(),)*
-                }
-            }
-            fn end(&self) -> usize {
-                match self {
-                    $(Self::$variant(t) => t.span().end(),)*
-                }
-            }
-            fn span(&self) -> &$crate::span::SourceSpan {
-                match self {
-                    $(Self::$variant(t) => t.span().span(),)*
-                }
-            }
-            fn len(&self) -> usize {
-                match self {
-                    $(Self::$variant(t) => t.span().len(),)*
-                }
-            }
-        }
+        )+
     };
 }
 
@@ -642,7 +644,15 @@ mod token_tests {
         token::{DelimitedToken, DelimiterToken, OperatorToken},
     };
 
-    generate_token_sum_type!(DummyToken, { Delimiter, Keyword });
+    generate_token_sum_type!(
+        [DummyToken, {
+            Delimiter,
+            DummyTokenInner
+        }],
+        [DummyTokenInner, {
+            Keyword
+        }]
+    );
     symbols!(
         [PERIOD, '.'],
         [QUESTION_MARK, '?'],
