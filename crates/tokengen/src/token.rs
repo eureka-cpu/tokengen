@@ -571,7 +571,7 @@ impl<D: DelimiterToken, T: Span> DelimitedTokenBuilder<D, T> {
 //
 /// Delimiters are `Option` since we should try to recover if parsing fails.
 /// [`DelimitedToken`]s are also considered [`Token`]s since they could potentially be nested.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DelimitedToken<D: DelimiterToken, T: Span> {
     open: Option<D>,
     token: Option<T>,
