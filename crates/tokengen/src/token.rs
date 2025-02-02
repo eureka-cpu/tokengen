@@ -220,20 +220,46 @@ macro_rules! operators {
         )+
         #[allow(dead_code)]
         #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, $crate::token::OperatorToken)]
-        pub enum OperatorKind {
-            $($name,)+
+        pub enum Operator {
+            $($name($name),)+
         }
-        impl AsRef<str> for OperatorKind {
-            fn as_ref(&self) -> &str {
+        impl Span for Operator {
+            fn src(&self) -> &std::sync::Arc<str> {
                 match self {
-                    $(Self::$name => $name::SYMBOLS,)+
+                    $(Self::$name(o) => o.span.src(),)+
                 }
             }
+            fn start(&self) -> usize {
+                match self {
+                    $(Self::$name(o) => o.span.start(),)+
+                }
+            }
+            fn end(&self) -> usize {
+                match self {
+                    $(Self::$name(o) => o.span.end(),)+
+                }
+            }
+            fn span(&self) -> &$crate::span::SourceSpan {
+                match self {
+                    $(Self::$name(o) => o.span.span(),)+
+                }
+            }
+            fn len(&self) -> usize {
+                match self {
+                    $(Self::$name(o) => o.span.len(),)+
+                }
+            }
+        }
+
+        #[allow(dead_code)]
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+        pub enum OperatorKind {
+            $($name,)+
         }
         impl std::fmt::Display for OperatorKind {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
-                    $(Self::$name => write!(f, "{}", $name::SYMBOLS.iter().map(|s| s.as_ref()).collect::<String>()),)+
+                    $(Self::$name => write!(f, "{}", $name::SYMBOLS.iter().collect::<String>()),)+
                 }
             }
         }
@@ -617,7 +643,7 @@ mod token_tests {
 
     use crate::{
         span::{SourceSpan, Span},
-        token::{DelimitedToken, DelimiterToken, PunctuatorToken, TokenSumType},
+        token::{DelimitedToken, DelimiterToken, OperatorToken, TokenSumType},
     };
 
     generate_token_sum_type!(DummyToken, { Delimiter, Keyword });
@@ -653,7 +679,7 @@ mod token_tests {
         [CLOSE_CURLY_BRACE, '}']
     );
 
-    punctuators!(
+    operators!(
         [AttributeSelection, [PERIOD]],
         [ArithmeticNegation, [HYPHEN]],
         [HasAttribute, [QUESTION_MARK]],
