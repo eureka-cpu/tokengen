@@ -1,7 +1,7 @@
 use std::{fmt, sync::Arc};
 
 // TODO: Add method for getting the source span itself
-pub trait Span {
+pub trait Span: fmt::Debug {
     fn src(&self) -> &Arc<str>;
 
     fn start(&self) -> usize;
