@@ -532,19 +532,19 @@ impl<D: DelimiterToken, T: Span> DelimitedTokenBuilder<D, T> {
             close: None,
         }
     }
-    pub fn open(self, open: D) -> Self {
+    pub fn open(self, open: Option<D>) -> Self {
         let mut buf = self;
-        buf.open = Some(open);
+        buf.open = open;
         buf
     }
-    pub fn token(self, token: T) -> Self {
+    pub fn token(self, token: Option<T>) -> Self {
         let mut buf = self;
-        buf.token = Some(token);
+        buf.token = token;
         buf
     }
-    pub fn close(self, close: D) -> Self {
+    pub fn close(self, close: Option<D>) -> Self {
         let mut buf = self;
-        buf.close = Some(close);
+        buf.close = close;
         buf
     }
     pub fn build(self) -> DelimitedToken<D, T> {
@@ -785,8 +785,8 @@ mod token_tests {
         let open = Delimiter::OpenParenthesis(OpenParenthesis::new(Arc::from(src), 0));
         let close = Delimiter::CloseParenthesis(CloseParenthesis::new(Arc::from(src), 1));
         let delimited_token: DelimitedToken<Delimiter, DummyToken> = DelimitedToken::builder()
-            .open(open.clone())
-            .close(close.clone())
+            .open(Some(open.clone()))
+            .close(Some(close.clone()))
             .build();
 
         let open_str = open.to_string();
