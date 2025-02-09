@@ -5,6 +5,7 @@ pub use tokengen_derive::{
     DelimiterToken, OperatorToken, PunctuatorToken, Span as DeriveSpan, TokenSum,
 };
 
+#[derive(Debug)]
 pub struct TokenStream<T: Span>(Vec<T>);
 impl<T: Span> TokenStream<T> {
     /// Create a new token stream from the length of the source to avoid reallocations
@@ -22,17 +23,6 @@ impl<T: Span> TokenStream<T> {
     }
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
-    }
-}
-
-// A little bit of pretty-printing in the debug printout helps with
-// downstream consumers who will be using expect_test
-impl<T: Span> Debug for TokenStream<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for tok in &self.0 {
-            writeln!(f, "{} ({}..{})", tok.src(), tok.start(), tok.end())?;
-        }
-        Ok(())
     }
 }
 
