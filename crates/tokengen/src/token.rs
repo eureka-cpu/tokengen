@@ -518,17 +518,17 @@ pub trait DelimiterToken: Debug + Clone + Span {}
 
 /// This uses generics since the tokens and consequently, the union types
 /// are not yet created. The only type DelimiterToken is implemented for is Delimiter.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct DelimitedTokenBuilder<D: DelimiterToken, T: Span> {
     open: Option<D>,
-    token: Option<T>,
+    tokens: Option<Vec<T>>,
     close: Option<D>,
 }
 impl<D: DelimiterToken, T: Span> DelimitedTokenBuilder<D, T> {
     pub fn new() -> Self {
         Self {
             open: None,
-            token: None,
+            tokens: None,
             close: None,
         }
     }
@@ -537,9 +537,9 @@ impl<D: DelimiterToken, T: Span> DelimitedTokenBuilder<D, T> {
         buf.open = open;
         buf
     }
-    pub fn token(self, token: Option<T>) -> Self {
+    pub fn token(self, token: Option<Vec<T>>) -> Self {
         let mut buf = self;
-        buf.token = token;
+        buf.tokens = token;
         buf
     }
     pub fn close(self, close: Option<D>) -> Self {
@@ -549,7 +549,7 @@ impl<D: DelimiterToken, T: Span> DelimitedTokenBuilder<D, T> {
     }
     pub fn build(self) -> DelimitedToken<D, T> {
         let open = self.open;
-        let token = self.token;
+        let tokens = self.tokens;
         let close = self.close;
 
         let open_ref = open
@@ -558,14 +558,14 @@ impl<D: DelimiterToken, T: Span> DelimitedTokenBuilder<D, T> {
         let start = open_ref.start();
         let end = if let Some(close) = &close {
             close.end()
-        } else if let Some(token) = &token {
-            token.end()
+        } else if let Some(tokens) = &tokens {
+            tokens.last().unwrap().end()
         } else {
             open_ref.end()
         };
         let span = SourceSpan::new(open_ref.src().clone(), start, end);
 
-        DelimitedToken::new(open, token, close, span)
+        DelimitedToken::new(open, tokens.unwrap_or_default(), close, span)
     }
 }
 
@@ -576,7 +576,7 @@ impl<D: DelimiterToken, T: Span> DelimitedTokenBuilder<D, T> {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DelimitedToken<D: DelimiterToken, T: Span> {
     open: Option<D>,
-    token: Option<T>,
+    tokens: Vec<T>,
     close: Option<D>,
     /// The lexer will never not have the opening delimiter, since that is what we match for.
     /// Mostly the span here is just for testing and to appease the trait constraint.
@@ -588,10 +588,10 @@ impl<D: DelimiterToken, T: Span> DelimitedToken<D, T> {
     pub fn builder() -> DelimitedTokenBuilder<D, T> {
         DelimitedTokenBuilder::new()
     }
-    pub fn new(open: Option<D>, token: Option<T>, close: Option<D>, span: SourceSpan) -> Self {
+    pub fn new(open: Option<D>, tokens: Vec<T>, close: Option<D>, span: SourceSpan) -> Self {
         Self {
             open,
-            token,
+            tokens,
             close,
             span,
         }
@@ -599,8 +599,8 @@ impl<D: DelimiterToken, T: Span> DelimitedToken<D, T> {
     pub fn open(&self) -> Option<&D> {
         self.open.as_ref()
     }
-    pub fn token(&self) -> Option<&T> {
-        self.token.as_ref()
+    pub fn tokens(&self) -> &[T] {
+        self.tokens.as_ref()
     }
     pub fn close(&self) -> Option<&D> {
         self.close.as_ref()
@@ -611,7 +611,8 @@ impl<D: DelimiterToken, T: Span> Span for DelimitedToken<D, T> {
         self.open()
             .map(|t| t.src())
             .or(self
-                .token()
+                .tokens()
+                .last()
                 .map(|t| t.src())
                 .or(self.close().map(|t| t.src())))
             .expect("found empty delimited token group")
@@ -811,7 +812,7 @@ mod token_tests {
                             },
                         ),
                     ),
-                    token: None,
+                    tokens: [],
                     close: Some(
                         CloseParenthesis(
                             CloseParenthesis {
