@@ -26,6 +26,7 @@ impl<T: Span> TokenStream<T> {
     }
 }
 
+
 #[macro_export]
 macro_rules! generate_token_sum_type {
     ( $([$name:ident, { $($variant:ident),* }]),+ ) => {
@@ -524,13 +525,21 @@ pub struct DelimitedTokenBuilder<D: DelimiterToken, T: Span> {
     tokens: Option<Vec<T>>,
     close: Option<D>,
 }
-impl<D: DelimiterToken, T: Span> DelimitedTokenBuilder<D, T> {
-    pub fn new() -> Self {
+
+impl <D: DelimiterToken, T: Span> Default for DelimitedTokenBuilder<D, T>
+{
+    fn default() -> Self {
         Self {
             open: None,
             tokens: None,
             close: None,
         }
+    }
+}
+
+impl<D: DelimiterToken, T: Span> DelimitedTokenBuilder<D, T> {
+    pub fn new() -> Self {
+        Self::default() 
     }
     pub fn open(self, open: Option<D>) -> Self {
         let mut buf = self;
